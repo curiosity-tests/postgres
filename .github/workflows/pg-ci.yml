@@ -67,8 +67,8 @@ concurrency:
          (startsWith(github.ref, 'refs/heads/REL_') && endsWith(github.ref, '_STABLE')),
          github.run_id,
          github.ref)
-    }}-${{ inputs.leg || 'push' }}
-  cancel-in-progress: true
+    }}-${{ inputs.leg || 'push' }}-${{ inputs.racecar_run }}
+  cancel-in-progress: false
 
 env:
   CHALK_ON: ${{ github.event_name == 'workflow_dispatch' && inputs.leg != 'baseline' }}
@@ -324,7 +324,9 @@ jobs:
     steps:
       - *nix_sysinfo_step
 
-      - name: Prepare container for action-checkout
+      - &container_prep_step
+
+        name: Prepare container for action-checkout
         # action-checkout needs bash (its Detect LFS step exits 127 without
         # it) and curl: the is_private probe shells `curl -fsSLI` and reads
         # ANY non-zero exit as "private", which routes to a private action
@@ -348,7 +350,9 @@ jobs:
           lfs: false
           fetch-depth: ${{ env.CLONE_DEPTH }}
 
-      - name: Assert instrumentation is live
+      - &assert_instrumentation_step
+
+        name: Assert instrumentation is live
         # Socket existence, not LD_PRELOAD: co-monitor's loader clears
         # LD_PRELOAD once it has injected, so an empty value is what success
         # looks like. co-hostd also daemonizes, so pgrep does not match it.
@@ -557,7 +561,9 @@ jobs:
           echo "PG_TEST_PG_COMBINEBACKUP_MODE=${PG_TEST_PG_COMBINEBACKUP_MODE}" >> "$GITHUB_ENV"
 
       - *nix_sysinfo_step
+      - *container_prep_step
       - *checkout_step
+      - *assert_instrumentation_step
       - *ccache_restore_default_step
       - *ccache_restore_branch_step
       - *linux_prepare_workspace_step
@@ -619,7 +625,9 @@ jobs:
         run: *linux_update_config_cmd
 
       - *nix_sysinfo_step
+      - *container_prep_step
       - *checkout_step
+      - *assert_instrumentation_step
       - *ccache_restore_default_step
       - *ccache_restore_branch_step
       - *linux_prepare_workspace_step
@@ -709,7 +717,9 @@ jobs:
         run: *linux_update_config_cmd
 
       - *nix_sysinfo_step
+      - *container_prep_step
       - *checkout_step
+      - *assert_instrumentation_step
       - *ccache_restore_default_step
       - *ccache_restore_branch_step
       - *linux_prepare_workspace_step
@@ -795,7 +805,9 @@ jobs:
 
     steps:
       - *nix_sysinfo_step
+      - *container_prep_step
       - *checkout_step
+      - *assert_instrumentation_step
 
       - name: Setup core files
         run: |
@@ -950,7 +962,11 @@ jobs:
               Write-Host "AntivirusEnabled: $($status.AntivirusEnabled)"
           }
 
+      - *container_prep_step
+
       - *checkout_step
+
+      - *assert_instrumentation_step
 
       - name: Sysinfo
         run: |
@@ -1122,7 +1138,9 @@ jobs:
     steps:
       - *windows_disable_defender_step
       - *window_setup_hosts_step
+      - *container_prep_step
       - *checkout_step
+      - *assert_instrumentation_step
 
       # Relocate the preinstalled MSYS2 tree from C:\ (slow system disk) to
       # D:\ (faster ephemeral data disk). Every subsequent MSYS2 step uses
@@ -1233,7 +1251,9 @@ jobs:
 
     steps:
       - *nix_sysinfo_step
+      - *container_prep_step
       - *checkout_step
+      - *assert_instrumentation_step
       - *ccache_restore_default_step
       - *ccache_restore_branch_step
 
