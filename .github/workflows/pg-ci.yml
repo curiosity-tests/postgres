@@ -1,3 +1,20 @@
+
+# racecar fork-testbed patch. Changes from upstream:
+#   1. workflow_dispatch with a `leg` input so racecar can drive the run and pick
+#      baseline vs instrumented.
+#   2. actions/checkout -> crashappsec/action-checkout, which wraps checkout and
+#      setup-chalk-action; `chalk:` is the only variable separating the arms.
+#   3. permissions: id-token: write for the action's OIDC connect (the block
+#      zeroes unlisted scopes, so everything upstream relied on is restated).
+#   4. A fail-closed assertion on the instrumented arm.
+#   5. fail-fast: false on every matrix -- a measurement-integrity change, not a
+#      build change: the instrumented arm has strictly more failure surface, so
+#      leaving fail-fast on cancels instrumented siblings more often than
+#      baseline ones and biases the comparison.
+#   6. the concurrency group carries the leg. Both arms run on the same ref, so
+#      upstream's github.ref-keyed group put them in one group and the second
+#      dispatch cancelled the first. Also cancellation-only, never a build change.
+# Build and test COMMANDS are unchanged from upstream.
 # GitHub Actions CI configuration for PostgreSQL
 #
 # For instructions on how to enable / disable CI integration in a repository
@@ -8,7 +25,24 @@
 
 name: CI for PostgreSQL
 
+run-name: "CI for PostgreSQL ${{ inputs.leg || 'push' }} ${{ inputs.racecar_run }}"
+
 on:
+  workflow_dispatch:
+    inputs:
+      leg:
+        description: "baseline (uninstrumented) or instrumented (under chalk/curiosity)"
+        type: choice
+        options: [instrumented, baseline]
+        default: instrumented
+      profile:
+        description: "CrashOverride chalk profile"
+        type: string
+        default: curiosity-tests-racecar
+      racecar_run:
+        description: "racecar correlation token, echoed into the run name"
+        type: string
+        default: ""
   push:
   # TODO: It might make sense to also add PR based triggers, to make it easier
   # to use PRs on one's own repo, but it's a tad more complicated than just
@@ -19,6 +53,7 @@ on:
 # contents during checkout.
 permissions:
   contents: read
+  id-token: write
 
 concurrency:
   # For anything other than stable branches, we want there to only be one
@@ -32,10 +67,11 @@ concurrency:
          (startsWith(github.ref, 'refs/heads/REL_') && endsWith(github.ref, '_STABLE')),
          github.run_id,
          github.ref)
-    }}
+    }}-${{ inputs.leg || 'push' }}
   cancel-in-progress: true
 
 env:
+  CHALK_ON: ${{ github.event_name == 'workflow_dispatch' && inputs.leg != 'baseline' }}
   # The lower depth accelerates git clone. Use a bit of depth so that
   # concurrent jobs and retrying older runs have a chance of working.
   CLONE_DEPTH: 500
@@ -162,7 +198,7 @@ jobs:
   warn-if-not-opted-in:
     name: Report if not opted into CI
     if: ${{vars.PG_CI_ENABLED != '1'}}
-    runs-on: ubuntu-slim
+    runs-on: ubuntu-latest
     steps:
       - name: Warn
         env:
@@ -288,10 +324,39 @@ jobs:
     steps:
       - *nix_sysinfo_step
 
+      - name: Prepare container for action-checkout
+        # action-checkout needs bash (its Detect LFS step exits 127 without
+        # it) and curl: the is_private probe shells `curl -fsSLI` and reads
+        # ANY non-zero exit as "private", which routes to a private action
+        # this fork cannot resolve. Ungated so both arms pay the same setup
+        # cost -- an asymmetric cost between arms would bias the comparison.
+        # Best-effort: it must never fail a job that builds fine without it.
+        run: |
+          if command -v apk >/dev/null 2>&1; then apk add --no-cache bash curl
+          elif command -v microdnf >/dev/null 2>&1; then microdnf -y install bash curl
+          elif command -v dnf >/dev/null 2>&1; then dnf -y install bash curl
+          elif command -v yum >/dev/null 2>&1; then yum -y install bash curl
+          elif command -v apt-get >/dev/null 2>&1; then apt-get -q update && apt-get -q -y install bash curl
+          fi || echo "prep: package install failed, continuing"
+
       - &checkout_step
-        uses: actions/checkout@v6
+        uses: crashappsec/action-checkout@main
         with:
+          chalk: ${{ env.CHALK_ON }}
+          profile: ${{ inputs.profile || 'curiosity-tests-racecar' }}
+          observables_continue_on_error: false
+          lfs: false
           fetch-depth: ${{ env.CLONE_DEPTH }}
+
+      - name: Assert instrumentation is live
+        # Socket existence, not LD_PRELOAD: co-monitor's loader clears
+        # LD_PRELOAD once it has injected, so an empty value is what success
+        # looks like. co-hostd also daemonizes, so pgrep does not match it.
+        if: env.CHALK_ON == 'true'
+        run: |
+          test -n "${CURIOSITY_ROOT:-}" || { echo "::error::CURIOSITY_ROOT unset - observables never installed"; exit 1; }
+          test -S "${CURIOSITY_SOCKET_NAME:?socket name unset}" || { echo "::error::co-hostd socket absent"; exit 1; }
+
 
       # We restore both the ccache from the default branch (typically master),
       # and from the current branch. This will often allow feature branches to
@@ -681,12 +746,10 @@ jobs:
   # - Specifies configuration options that test reading/writing/copying of node trees
   # - Specifies debug_parallel_query=regress, to catch related issues during CI
   macos:
+    # racecar: non-Linux leg: observables are linux-only
+    if: false
     name: macOS - Meson
     needs: [setup, sanity-check]
-    if: |
-      !cancelled() &&
-      needs.setup.outputs.macos == 'true' &&
-      needs.sanity-check.result != 'failure'
     runs-on: macos-15
     timeout-minutes: 60
     env:
@@ -838,12 +901,10 @@ jobs:
   # with meson test's --slice SLICE/NUM_SLICES mechanism to split the tests
   # across two runners.
   windows-vs:
+    # racecar: non-Linux leg: observables are linux-only
+    if: false
     name: Windows - Visual Studio - Slice ${{ matrix.slice}}/${{ matrix.num_slices}}
     needs: [setup, sanity-check]
-    if: |
-      !cancelled() &&
-      needs.setup.outputs.windows == 'true' &&
-      needs.sanity-check.result != 'failure'
     runs-on: windows-2022
     timeout-minutes: 60
 
@@ -1029,12 +1090,10 @@ jobs:
 
   # Job: Windows - MinGW - Meson
   windows-mingw:
+    # racecar: non-Linux leg: observables are linux-only
+    if: false
     name: Windows - MinGW - Meson
     needs: [setup, sanity-check]
-    if: |
-      !cancelled() &&
-      needs.setup.outputs.mingw == 'true' &&
-      needs.sanity-check.result != 'failure'
     runs-on: windows-2022
     timeout-minutes: 60
     env:
