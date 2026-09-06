@@ -71,7 +71,7 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  CHALK_ON: ${{ github.event_name == 'workflow_dispatch' && inputs.leg != 'baseline' }}
+  CHALK_ON: ${{ inputs.leg == 'instrumented' }}
   # The lower depth accelerates git clone. Use a bit of depth so that
   # concurrent jobs and retrying older runs have a chance of working.
   CLONE_DEPTH: 500
