@@ -1,4 +1,3 @@
-
 # racecar fork-testbed patch. Changes from upstream:
 #   1. workflow_dispatch with a `leg` input so racecar can drive the run and pick
 #      baseline vs instrumented.
@@ -200,23 +199,23 @@ jobs:
     if: ${{vars.PG_CI_ENABLED != '1'}}
     runs-on: ubuntu-latest
     steps:
-      - name: Warn
-        env:
-          MSG: |
-            > [!IMPORTANT]
-            > ${{github.workflow}} has not been opted into in this repository
-            >
-            > To opt into ${{github.workflow}}, go to
-            > ${{github.server_url}}/${{github.repository}}/settings/variables/actions
-            > and create a new repository variable named PG_CI_ENABLED, with
-            > the value 1.
-            >
-            > To avoid seeing this message over and over, go to
-            > ${{github.server_url}}/${{github.repository}}/actions/workflows/pg-ci.yml
-            > and click on the three dots at the top right and choose
-            > "Disable workflow"
-        run: |
-          echo "$MSG" |tee -a "$GITHUB_STEP_SUMMARY"
+    - name: Warn
+      env:
+        MSG: |
+          > [!IMPORTANT]
+          > ${{github.workflow}} has not been opted into in this repository
+          >
+          > To opt into ${{github.workflow}}, go to
+          > ${{github.server_url}}/${{github.repository}}/settings/variables/actions
+          > and create a new repository variable named PG_CI_ENABLED, with
+          > the value 1.
+          >
+          > To avoid seeing this message over and over, go to
+          > ${{github.server_url}}/${{github.repository}}/actions/workflows/pg-ci.yml
+          > and click on the three dots at the top right and choose
+          > "Disable workflow"
+      run: |
+        echo "$MSG" |tee -a "$GITHUB_STEP_SUMMARY"
 
 
   # Job: Determine enabled jobs
@@ -248,35 +247,35 @@ jobs:
       # anchors/aliases but not merge keys, so the alias copies the whole step
       # verbatim. The anchor is resolved at YAML parse time, so the alias
       # keeps working even if this job were to be skipped at runtime.
-      - &nix_sysinfo_step
-        name: sysinfo
-        run: |
-          id
-          uname -a
-          ulimit -a -H && ulimit -a -S
-          env
+    - &nix_sysinfo_step
+      name: sysinfo
+      run: |
+        id
+        uname -a
+        ulimit -a -H && ulimit -a -S
+        env
 
-      - name: Parse ci-os-only
-        id: os
-        env:
-          MSG: ${{ github.event.head_commit.message }}
-        shell: bash
-        run: |
-          all_os=${CI_OS_ONLY_JOBS}
-          if printf '%s\n' "$MSG" | grep -qE '^ci-os-only: '; then
-            sel=$(printf '%s\n' "$MSG" | sed -n 's/^ci-os-only: //p' | head -n 1)
-            echo "ci-os-only selection: $sel"
+    - name: Parse ci-os-only
+      id: os
+      env:
+        MSG: ${{ github.event.head_commit.message }}
+      shell: bash
+      run: |
+        all_os=${CI_OS_ONLY_JOBS}
+        if printf '%s\n' "$MSG" | grep -qE '^ci-os-only: '; then
+          sel=$(printf '%s\n' "$MSG" | sed -n 's/^ci-os-only: //p' | head -n 1)
+          echo "ci-os-only selection: $sel"
+        else
+          sel="$all_os"
+        fi
+        for o in $all_os; do
+          if echo " $sel " | grep -qE "[ ,]$o[ ,]"; then
+            echo "$o=true" >> "$GITHUB_OUTPUT"
           else
-            sel="$all_os"
+            echo "$o=false" >> "$GITHUB_OUTPUT"
           fi
-          for o in $all_os; do
-            if echo " $sel " | grep -qE "[ ,]$o[ ,]"; then
-              echo "$o=true" >> "$GITHUB_OUTPUT"
-            else
-              echo "$o=false" >> "$GITHUB_OUTPUT"
-            fi
-          done
-          cat "$GITHUB_OUTPUT"
+        done
+        cat "$GITHUB_OUTPUT"
 
 
   # Job: SanityCheck
@@ -322,132 +321,113 @@ jobs:
       CCACHE_MAXSIZE: "150M"
 
     steps:
-      - *nix_sysinfo_step
+    - *nix_sysinfo_step
 
-      - &container_prep_step
 
-        name: Prepare container for action-checkout
+    - &container_prep_step
+      name: Prepare container for action-checkout
         # action-checkout needs bash (its Detect LFS step exits 127 without
         # it) and curl: the is_private probe shells `curl -fsSLI` and reads
         # ANY non-zero exit as "private", which routes to a private action
         # this fork cannot resolve. Ungated so both arms pay the same setup
         # cost -- an asymmetric cost between arms would bias the comparison.
         # Best-effort: it must never fail a job that builds fine without it.
-        run: |
-          if command -v apk >/dev/null 2>&1; then apk add --no-cache bash curl
-          elif command -v microdnf >/dev/null 2>&1; then microdnf -y install bash curl
-          elif command -v dnf >/dev/null 2>&1; then dnf -y install bash curl
-          elif command -v yum >/dev/null 2>&1; then yum -y install bash curl
-          elif command -v apt-get >/dev/null 2>&1; then apt-get -q update && apt-get -q -y install bash curl
-          fi || echo "prep: package install failed, continuing"
+      run: |
+        if command -v apk >/dev/null 2>&1; then apk add --no-cache bash curl
+        elif command -v microdnf >/dev/null 2>&1; then microdnf -y install bash curl
+        elif command -v dnf >/dev/null 2>&1; then dnf -y install bash curl
+        elif command -v yum >/dev/null 2>&1; then yum -y install bash curl
+        elif command -v apt-get >/dev/null 2>&1; then apt-get -q update && apt-get -q -y install bash curl
+        fi || echo "prep: package install failed, continuing"
 
-      - &checkout_step
-        uses: crashappsec/action-checkout@main
-        with:
-          chalk: ${{ env.CHALK_ON }}
-          profile: ${{ inputs.profile || 'curiosity-tests-racecar' }}
-          observables_continue_on_error: false
-          lfs: false
-          fetch-depth: ${{ env.CLONE_DEPTH }}
+    - &checkout_step
+      uses: crashappsec/action-checkout@main
+      with:
+        chalk: ${{ env.CHALK_ON }}
+        profile: ${{ inputs.profile || 'curiosity-tests-racecar' }}
+        observables_continue_on_error: false
+        lfs: false
+        fetch-depth: ${{ env.CLONE_DEPTH }}
 
-      - &assert_instrumentation_step
+    - &ccache_restore_default_step
+      name: "ccache: Restore for default branch ${{github.event.repository.default_branch}}"
+      if: ${{ env.ON_DEFAULT_BRANCH == 'false' }}
+      uses: actions/cache/restore@v5
+      with:
+        path: ${{ env.CCACHE_DIR }}
+        key: ccache${{env.CACHE_PREFIX_DEFAULT}}${{env.CACHE_SUFFIX}}
+        restore-keys: ccache${{env.CACHE_PREFIX_DEFAULT}}
 
-        name: Assert instrumentation is live
-        # Socket existence, not LD_PRELOAD: co-monitor's loader clears
-        # LD_PRELOAD once it has injected, so an empty value is what success
-        # looks like. co-hostd also daemonizes, so pgrep does not match it.
-        if: env.CHALK_ON == 'true'
-        run: |
-          test -n "${CURIOSITY_ROOT:-}" || { echo "::error::CURIOSITY_ROOT unset - observables never installed"; exit 1; }
-          test -S "${CURIOSITY_SOCKET_NAME:?socket name unset}" || { echo "::error::co-hostd socket absent"; exit 1; }
+    - &ccache_restore_branch_step
+      name: "ccache: Restore for branch ${{ github.ref_name }}"
+      id: ccache-restore-branch
+      uses: actions/cache/restore@v5
+      with:
+        path: ${{ env.CCACHE_DIR }}
+        key: ccache${{env.CACHE_PREFIX_BRANCH}}${{env.CACHE_SUFFIX}}
+        restore-keys: ccache${{env.CACHE_PREFIX_BRANCH}}
 
+    - &linux_prepare_workspace_step
+      name: Prepare workspace
+      run: |
+        useradd -m postgres
+        chown -R postgres:postgres .
+        mkdir -m 770 /tmp/cores
+        chown root:postgres /tmp/cores
+        sysctl kernel.core_pattern='/tmp/cores/%e-%s-%p.core'
+        # This is only needed for some of the tasks using this, but it
+        # doesn't harm to have this enabled.
+        sysctl -w kernel.io_uring_disabled=0
 
-      # We restore both the ccache from the default branch (typically master),
-      # and from the current branch. This will often allow feature branches to
-      # start out with a high cache hit ratio.
-      #
-      # With ccache it turns out to work to just restore two caches into the
-      # same directory, as it's basically a content addressed store. Stats
-      # could be corrupted, but we zero them out anyway.
-      - &ccache_restore_default_step
-        name: "ccache: Restore for default branch ${{github.event.repository.default_branch}}"
-        if: ${{ env.ON_DEFAULT_BRANCH == 'false' }}
-        uses: actions/cache/restore@v5
-        with:
-          path: ${{ env.CCACHE_DIR }}
-          key: ccache${{env.CACHE_PREFIX_DEFAULT}}${{env.CACHE_SUFFIX}}
-          restore-keys: ccache${{env.CACHE_PREFIX_DEFAULT}}
-
-      - &ccache_restore_branch_step
-        name: "ccache: Restore for branch ${{ github.ref_name }}"
-        id: ccache-restore-branch
-        uses: actions/cache/restore@v5
-        with:
-          path: ${{ env.CCACHE_DIR }}
-          key: ccache${{env.CACHE_PREFIX_BRANCH}}${{env.CACHE_SUFFIX}}
-          restore-keys: ccache${{env.CACHE_PREFIX_BRANCH}}
-
-      - &linux_prepare_workspace_step
-        name: Prepare workspace
-        run: |
-          useradd -m postgres
-          chown -R postgres:postgres .
-          mkdir -m 770 /tmp/cores
-          chown root:postgres /tmp/cores
-          sysctl kernel.core_pattern='/tmp/cores/%e-%s-%p.core'
-          # This is only needed for some of the tasks using this, but it
-          # doesn't harm to have this enabled.
-          sysctl -w kernel.io_uring_disabled=0
-
-          cat >> /etc/hosts <<-EOF
-            127.0.0.1 pg-loadbalancetest
-            127.0.0.2 pg-loadbalancetest
-            127.0.0.3 pg-loadbalancetest
-          EOF
+        cat >> /etc/hosts <<-EOF
+          127.0.0.1 pg-loadbalancetest
+          127.0.0.2 pg-loadbalancetest
+          127.0.0.3 pg-loadbalancetest
+        EOF
 
       # By using a shell that includes su, the run commands themselves get
       # simpler. As there are quite a few commands that need to use su...
-      - name: Configure
-        shell: &su_postgres_shell |
-          su postgres -c "bash --noprofile --norc -eo pipefail {0}"
-        run: |
-          meson setup \
-            --buildtype=debug \
-            --auto-features=disabled \
-            -Ddefault_library=shared \
-            -Dtap_tests=enabled \
-            build
+    - name: Configure
+      shell: &su_postgres_shell |
+        su postgres -c "bash --noprofile --norc -eo pipefail {0}"
+      run: |
+        meson setup \
+          --buildtype=debug \
+          --auto-features=disabled \
+          -Ddefault_library=shared \
+          -Dtap_tests=enabled \
+          build
 
-      - name: Build
-        shell: *su_postgres_shell
-        run: &ninja_build_cmd |
-          ninja -C build -j${{env.BUILD_JOBS}} ${{env.MBUILD_TARGET}}
-          ninja -C build -t missingdeps
+    - name: Build
+      shell: *su_postgres_shell
+      run: &ninja_build_cmd |
+        ninja -C build -j${{env.BUILD_JOBS}} ${{env.MBUILD_TARGET}}
+        ninja -C build -t missingdeps
 
       # Decide if it's worth uploading a new version of the ccache cache. If
       # we always do so unconditionally, we'd very quickly go through the
       # allowed cache space. Instead we check if the hit rate is high enough
       # already for that not to be worth it.
-      - &ccache_decide_save_step
-        name: "ccache: Decide whether to upload"
-        id: ccache-decide
+    - &ccache_decide_save_step
+      name: "ccache: Decide whether to upload"
+      id: ccache-decide
         # Make the decision whether to upload whenever the cache has been set
         # up, so that incrementally addressing compiler errors/warnings
         # doesn't have to start from scratch.
-        if: |
-          always() &&
-          steps.ccache-restore-branch.conclusion == 'success'
-        run: python3 src/tools/ci/gha_ccache_decide.py
+      if: |
+        always() &&
+        steps.ccache-restore-branch.conclusion == 'success'
+      run: python3 src/tools/ci/gha_ccache_decide.py
 
-      - &ccache_save_step
-        name: "ccache: Upload cache"
-        uses: actions/cache/save@v5
-        if: |
-          always() &&
-          steps.ccache-decide.outputs.should_save == 'true'
-        with:
-          path: ${{ env.CCACHE_DIR }}
-          key: ${{ steps.ccache-restore-branch.outputs.cache-primary-key }}
+    - &ccache_save_step
+      name: "ccache: Upload cache"
+      uses: actions/cache/save@v5
+      if: |
+        always() &&
+        steps.ccache-decide.outputs.should_save == 'true'
+      with:
+        path: ${{ env.CCACHE_DIR }}
+        key: ${{ steps.ccache-restore-branch.outputs.cache-primary-key }}
 
       # Run a minimal set of tests. The main regression tests take too long
       # for this purpose. For now this is a random quick pg_regress style
@@ -461,41 +441,41 @@ jobs:
       # Note that this command is used on all platforms, therefore one needs
       # to be careful about using only ${{env.}} variable references,
       # linebreaks etc.
-      - name: Test
-        shell: *su_postgres_shell
-        env:
-          MTEST_TARGET: cube/regress pg_ctl/001_start_stop
-        run: &meson_test_world_cmd |
-          ${{case(runner.os == 'Windows', '', 'ulimit -c unlimited')}}
+    - name: Test
+      shell: *su_postgres_shell
+      env:
+        MTEST_TARGET: cube/regress pg_ctl/001_start_stop
+      run: &meson_test_world_cmd |
+        ${{case(runner.os == 'Windows', '', 'ulimit -c unlimited')}}
 
-          ${{env.ADDITIONAL_SETUP}}
+        ${{env.ADDITIONAL_SETUP}}
 
-          echo ::group::test_setup
-          meson test ${{env.MTEST_ARGS}} --suite setup --logbase setup || exit 1
-          echo ::endgroup::
+        echo ::group::test_setup
+        meson test ${{env.MTEST_ARGS}} --suite setup --logbase setup || exit 1
+        echo ::endgroup::
 
-          meson test ${{env.MTEST_ARGS}} --num-processes ${{env.TEST_JOBS}} --no-suite setup ${{env.MTEST_TARGET}}
+        meson test ${{env.MTEST_ARGS}} --num-processes ${{env.TEST_JOBS}} --no-suite setup ${{env.MTEST_TARGET}}
 
-      - &linux_collect_cores_step
-        name: Core backtraces
-        if: failure() && !cancelled()
-        run: src/tools/ci/cores_backtrace.sh linux /tmp/cores
+    - &linux_collect_cores_step
+      name: Core backtraces
+      if: failure() && !cancelled()
+      run: src/tools/ci/cores_backtrace.sh linux /tmp/cores
 
       # Note that this is used for both meson and autoconf builds
-      - &upload_logs_step
-        name: Upload logs
-        if: failure() && !cancelled()
-        uses: actions/upload-artifact@v7
-        with:
-          name: logs-${{ github.job }}-${{ github.run_id }}-${{ github.run_attempt }}
-          path: |
-              **/*.log
-              **/*.diffs
-              **/regress_log_*
-              **/crashlog-*.txt
-              build/meson-logs/**
-              **/config.log
-          if-no-files-found: ignore
+    - &upload_logs_step
+      name: Upload logs
+      if: failure() && !cancelled()
+      uses: actions/upload-artifact@v7
+      with:
+        name: logs-${{ github.job }}-${{ github.run_id }}-${{ github.run_attempt }}
+        path: |
+          **/*.log
+          **/*.diffs
+          **/regress_log_*
+          **/crashlog-*.txt
+          build/meson-logs/**
+          **/config.log
+        if-no-files-found: ignore
 
 
   # Job: Linux - Autoconf
@@ -507,6 +487,83 @@ jobs:
   # - Uses PG_TEST_PG_COMBINEBACKUP_MODE=--copy-file-range
   # - Uses postgres specific CPPFLAGS that increase test coverage
   # - Enables --link for pg_upgrade
+    - name: Check observables and crashes
+      if: always() && env.CHALK_ON == 'true'
+      shell: bash
+      run: |
+        set -uo pipefail
+        root="${CURIOSITY_ROOT:-}"
+        home="${CURIOSITY_HOME:-/mnt/curiosity}"
+        obs="${home}/observables"
+        fail=0
+
+        echo "::group::curiosity layout"
+        echo "CURIOSITY_ROOT=${root:-<unset>}"
+        echo "CURIOSITY_HOME=${home}"
+        ls -la "${obs}" 2>/dev/null || echo "no observables dir at ${obs}"
+        echo "::endgroup::"
+
+        # Observables for THIS run+attempt. The prefix matters: a stale file from an
+        # earlier run on the same mount would otherwise pass.
+        prefix="${GITHUB_RUN_ID}_${GITHUB_RUN_ATTEMPT}"
+        shopt -s nullglob
+        mine=("${obs}/${prefix}"*)
+        if [ ${#mine[@]} -eq 0 ]; then
+          mine=("${obs}/${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}-observables"*)
+        fi
+        if [ ${#mine[@]} -eq 0 ]; then
+          echo "::error::no observables for run ${prefix} in ${obs} - instrumentation produced nothing"
+          fail=1
+        else
+          echo "observables present: ${#mine[@]} file(s)"
+          printf '  %s\n' "${mine[@]}"
+        fi
+
+        for f in "${mine[@]}"; do
+          case "$f" in
+            *.jsonl|*.json|*.combined)
+              if ! jq --slurp "." "$f" > /dev/null 2>&1; then
+                echo "::error::observables do not parse: $f"
+                fail=1
+              fi
+              ;;
+          esac
+        done
+
+        # Crash thresholds copied from check-run: a few null frames are noise, more than
+        # five is a stack walk into nothing.
+        for f in "${root}"/log/co-host*.log "${home}"/log/co-host*.log; do
+          [ -f "$f" ] || continue
+          echo "Asserting that there is no crash in $f"
+          if [ "$(grep -c 'p 00000000' "$f" 2>/dev/null || echo 0)" -gt 5 ] \
+            || [ "$(grep -E -c 'FATAL: Uncaught signal|Address not mapped at|RAX 0x.*RBX 0x' "$f" 2>/dev/null || echo 0)" -gt 1 ]; then
+            echo "::error::crash signature in $f"
+            grep -E 'FATAL: Uncaught signal|Address not mapped at' "$f" | head -5 || true
+            fail=1
+          fi
+        done
+
+        cores=("${root}"/coredump.* "${home}"/coredump.*)
+        if [ ${#cores[@]} -gt 0 ]; then
+          echo "::error::coredump present: ${cores[*]}"
+          fail=1
+        fi
+
+        for f in "${root}"/runc.log "${root}"/runc.global.log \
+                 "${home}"/runc.log "${home}"/runc.global.log; do
+          [ -f "$f" ] || continue
+          if grep -q '^E:' "$f"; then
+            echo "::error::error in $f"
+            grep '^E:' "$f" | head -5
+            fail=1
+          fi
+        done
+
+        if [ "$fail" -ne 0 ]; then
+          echo "::error::instrumentation check FAILED"
+          exit 1
+        fi
+        echo "instrumentation check passed"
   linux-autoconf:
     name: Linux - Autoconf
     needs: [setup, sanity-check]
@@ -541,59 +598,135 @@ jobs:
       # GitHub Actions does not make it easy to share some, but not all,
       # environment variables between related tasks. We solve that for the
       # linux- tasks by updating the environment variables programmatically.
-      - name: Update Environment
-        env:
-          SANITIZER_FLAGS: -fsanitize=alignment,undefined
-          PG_TEST_PG_COMBINEBACKUP_MODE: --copy-file-range
-          CPPFLAGS: -DRELCACHE_FORCE_RELEASE -DENFORCE_REGRESSION_TEST_NAME_RESTRICTIONS
-          PG_TEST_PG_UPGRADE_MODE: --link
-        run: &linux_update_config_cmd |
-          echo "CPPFLAGS=$CPPFLAGS" >> "$GITHUB_ENV"
-          echo "CFLAGS=$CFLAGS ${SANITIZER_FLAGS}" >> "$GITHUB_ENV"
-          echo "CXXFLAGS=$CXXFLAGS ${SANITIZER_FLAGS}" >> "$GITHUB_ENV"
-          echo "LDFLAGS=$LDFLAGS ${SANITIZER_FLAGS}" >> "$GITHUB_ENV"
+    - name: Update Environment
+      env:
+        SANITIZER_FLAGS: -fsanitize=alignment,undefined
+        PG_TEST_PG_COMBINEBACKUP_MODE: --copy-file-range
+        CPPFLAGS: -DRELCACHE_FORCE_RELEASE -DENFORCE_REGRESSION_TEST_NAME_RESTRICTIONS
+        PG_TEST_PG_UPGRADE_MODE: --link
+      run: &linux_update_config_cmd |
+        echo "CPPFLAGS=$CPPFLAGS" >> "$GITHUB_ENV"
+        echo "CFLAGS=$CFLAGS ${SANITIZER_FLAGS}" >> "$GITHUB_ENV"
+        echo "CXXFLAGS=$CXXFLAGS ${SANITIZER_FLAGS}" >> "$GITHUB_ENV"
+        echo "LDFLAGS=$LDFLAGS ${SANITIZER_FLAGS}" >> "$GITHUB_ENV"
 
-          echo "CC=${CC}" >> "$GITHUB_ENV"
-          echo "CXX=${CXX}" >> "$GITHUB_ENV"
+        echo "CC=${CC}" >> "$GITHUB_ENV"
+        echo "CXX=${CXX}" >> "$GITHUB_ENV"
 
-          echo "PG_TEST_PG_UPGRADE_MODE=${PG_TEST_PG_UPGRADE_MODE}" >> "$GITHUB_ENV"
-          echo "PG_TEST_INITDB_EXTRA_OPTS=${PG_TEST_INITDB_EXTRA_OPTS}" >> "$GITHUB_ENV"
-          echo "PG_TEST_PG_COMBINEBACKUP_MODE=${PG_TEST_PG_COMBINEBACKUP_MODE}" >> "$GITHUB_ENV"
+        echo "PG_TEST_PG_UPGRADE_MODE=${PG_TEST_PG_UPGRADE_MODE}" >> "$GITHUB_ENV"
+        echo "PG_TEST_INITDB_EXTRA_OPTS=${PG_TEST_INITDB_EXTRA_OPTS}" >> "$GITHUB_ENV"
+        echo "PG_TEST_PG_COMBINEBACKUP_MODE=${PG_TEST_PG_COMBINEBACKUP_MODE}" >> "$GITHUB_ENV"
 
-      - *nix_sysinfo_step
-      - *container_prep_step
-      - *checkout_step
-      - *assert_instrumentation_step
-      - *ccache_restore_default_step
-      - *ccache_restore_branch_step
-      - *linux_prepare_workspace_step
+    - *nix_sysinfo_step
+    - *container_prep_step
+    - *checkout_step
+    - *ccache_restore_default_step
+    - *ccache_restore_branch_step
+    - *linux_prepare_workspace_step
 
-      - name: Configure
-        shell: *su_postgres_shell
-        run: |
-          ./configure \
-            --enable-cassert --enable-injection-points --enable-debug \
-            --enable-tap-tests --enable-nls \
-            --with-segsize-blocks=6 \
-            --with-libnuma \
-            --with-liburing \
-            ${LINUX_CONFIGURE_FEATURES}
+    - name: Configure
+      shell: *su_postgres_shell
+      run: |
+        ./configure \
+          --enable-cassert --enable-injection-points --enable-debug \
+          --enable-tap-tests --enable-nls \
+          --with-segsize-blocks=6 \
+          --with-libnuma \
+          --with-liburing \
+          ${LINUX_CONFIGURE_FEATURES}
 
-      - name: Build
-        shell: *su_postgres_shell
-        run: |
-          make -s -j${BUILD_JOBS} world-bin
+    - name: Build
+      shell: *su_postgres_shell
+      run: |
+        make -s -j${BUILD_JOBS} world-bin
 
-      - *ccache_decide_save_step
-      - *ccache_save_step
+    - *ccache_decide_save_step
+    - *ccache_save_step
 
-      - name: Test world
-        shell: *su_postgres_shell
-        run: |
-          make -s ${CHECK} ${CHECKFLAGS} -j${TEST_JOBS}
+    - name: Test world
+      shell: *su_postgres_shell
+      run: |
+        make -s ${CHECK} ${CHECKFLAGS} -j${TEST_JOBS}
 
-      - *linux_collect_cores_step
-      - *upload_logs_step
+    - *linux_collect_cores_step
+    - *upload_logs_step
+    - name: Check observables and crashes
+      if: always() && env.CHALK_ON == 'true'
+      shell: bash
+      run: |
+        set -uo pipefail
+        root="${CURIOSITY_ROOT:-}"
+        home="${CURIOSITY_HOME:-/mnt/curiosity}"
+        obs="${home}/observables"
+        fail=0
+
+        echo "::group::curiosity layout"
+        echo "CURIOSITY_ROOT=${root:-<unset>}"
+        echo "CURIOSITY_HOME=${home}"
+        ls -la "${obs}" 2>/dev/null || echo "no observables dir at ${obs}"
+        echo "::endgroup::"
+
+        # Observables for THIS run+attempt. The prefix matters: a stale file from an
+        # earlier run on the same mount would otherwise pass.
+        prefix="${GITHUB_RUN_ID}_${GITHUB_RUN_ATTEMPT}"
+        shopt -s nullglob
+        mine=("${obs}/${prefix}"*)
+        if [ ${#mine[@]} -eq 0 ]; then
+          mine=("${obs}/${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}-observables"*)
+        fi
+        if [ ${#mine[@]} -eq 0 ]; then
+          echo "::error::no observables for run ${prefix} in ${obs} - instrumentation produced nothing"
+          fail=1
+        else
+          echo "observables present: ${#mine[@]} file(s)"
+          printf '  %s\n' "${mine[@]}"
+        fi
+
+        for f in "${mine[@]}"; do
+          case "$f" in
+            *.jsonl|*.json|*.combined)
+              if ! jq --slurp "." "$f" > /dev/null 2>&1; then
+                echo "::error::observables do not parse: $f"
+                fail=1
+              fi
+              ;;
+          esac
+        done
+
+        # Crash thresholds copied from check-run: a few null frames are noise, more than
+        # five is a stack walk into nothing.
+        for f in "${root}"/log/co-host*.log "${home}"/log/co-host*.log; do
+          [ -f "$f" ] || continue
+          echo "Asserting that there is no crash in $f"
+          if [ "$(grep -c 'p 00000000' "$f" 2>/dev/null || echo 0)" -gt 5 ] \
+            || [ "$(grep -E -c 'FATAL: Uncaught signal|Address not mapped at|RAX 0x.*RBX 0x' "$f" 2>/dev/null || echo 0)" -gt 1 ]; then
+            echo "::error::crash signature in $f"
+            grep -E 'FATAL: Uncaught signal|Address not mapped at' "$f" | head -5 || true
+            fail=1
+          fi
+        done
+
+        cores=("${root}"/coredump.* "${home}"/coredump.*)
+        if [ ${#cores[@]} -gt 0 ]; then
+          echo "::error::coredump present: ${cores[*]}"
+          fail=1
+        fi
+
+        for f in "${root}"/runc.log "${root}"/runc.global.log \
+                 "${home}"/runc.log "${home}"/runc.global.log; do
+          [ -f "$f" ] || continue
+          if grep -q '^E:' "$f"; then
+            echo "::error::error in $f"
+            grep '^E:' "$f" | head -5
+            fail=1
+          fi
+        done
+
+        if [ "$fail" -ne 0 ]; then
+          echo "::error::instrumentation check FAILED"
+          exit 1
+        fi
+        echo "instrumentation check passed"
 
 
   # Job: Linux - Meson (32-bit)
@@ -616,80 +749,154 @@ jobs:
     env: *linux_env
 
     steps:
-      - name: Update Environment
-        env:
-          SANITIZER_FLAGS: -fsanitize=alignment,undefined
-          PG_TEST_INITDB_EXTRA_OPTS: -c io_method=io_uring
-          CC: ccache gcc -m32
-          CXX: ccache g++ -m32
-        run: *linux_update_config_cmd
+    - name: Update Environment
+      env:
+        SANITIZER_FLAGS: -fsanitize=alignment,undefined
+        PG_TEST_INITDB_EXTRA_OPTS: -c io_method=io_uring
+        CC: ccache gcc -m32
+        CXX: ccache g++ -m32
+      run: *linux_update_config_cmd
+    - *nix_sysinfo_step
+    - *container_prep_step
+    - *checkout_step
+    - *ccache_restore_default_step
+    - *ccache_restore_branch_step
+    - *linux_prepare_workspace_step
 
-      - *nix_sysinfo_step
-      - *container_prep_step
-      - *checkout_step
-      - *assert_instrumentation_step
-      - *ccache_restore_default_step
-      - *ccache_restore_branch_step
-      - *linux_prepare_workspace_step
+    - name: Configure
+      shell: *su_postgres_shell
+      run: |
+        meson setup \
+          ${MESON_COMMON_PG_CONFIG_ARGS} \
+          -Duuid=e2fs \
+          --buildtype=debug \
+          --pkg-config-path /usr/lib/i386-linux-gnu/pkgconfig/ \
+          -DPERL=perl5.40-i386-linux-gnu \
+          -Dlibnuma=disabled \
+          build
 
-      - name: Configure
-        shell: *su_postgres_shell
-        run: |
-          meson setup \
-            ${MESON_COMMON_PG_CONFIG_ARGS} \
-            -Duuid=e2fs \
-            --buildtype=debug \
-            --pkg-config-path /usr/lib/i386-linux-gnu/pkgconfig/ \
-            -DPERL=perl5.40-i386-linux-gnu \
-            -Dlibnuma=disabled \
-            build
+    - name: Build
+      shell: *su_postgres_shell
+      run: *ninja_build_cmd
+    - *ccache_decide_save_step
+    - *ccache_save_step
 
-      - name: Build
-        shell: *su_postgres_shell
-        run: *ninja_build_cmd
-
-      - *ccache_decide_save_step
-      - *ccache_save_step
-
-      - name: Test world
-        shell: *su_postgres_shell
-        env:
-          PYTHONCOERCECLOCALE: 0
-          LANG: C
-        run: *meson_test_world_cmd
+    - name: Test world
+      shell: *su_postgres_shell
+      env:
+        PYTHONCOERCECLOCALE: 0
+        LANG: C
+      run: *meson_test_world_cmd
 
       # Test running against existing PG instance.
       #
       # linux-meson-32 chosen because it's currently comparatively fast
-      - name: Test running
-        shell: *su_postgres_shell
-        run: |
-          ulimit -c unlimited
+    - name: Test running
+      shell: *su_postgres_shell
+      run: |
+        ulimit -c unlimited
 
-          # Ensure install exists, in case somebody is debugging a failing
-          # test and reorders this to be before "Test world".
-          echo ::group::test_setup
-          meson test ${{env.MTEST_ARGS}} --suite setup --logbase setup
-          echo ::endgroup::
+        # Ensure install exists, in case somebody is debugging a failing
+        # test and reorders this to be before "Test world".
+        echo ::group::test_setup
+        meson test ${{env.MTEST_ARGS}} --suite setup --logbase setup
+        echo ::endgroup::
 
-          # Make libraries discoverable (the x86_64 reference is a meson
-          # oddity)
-          export LD_LIBRARY_PATH="$(pwd)/build/tmp_install/usr/local/pgsql/lib/x86_64-linux-gnu/:$LD_LIBRARY_PATH"
+        # Make libraries discoverable (the x86_64 reference is a meson
+        # oddity)
+        export LD_LIBRARY_PATH="$(pwd)/build/tmp_install/usr/local/pgsql/lib/x86_64-linux-gnu/:$LD_LIBRARY_PATH"
 
-          build/tmp_install/usr/local/pgsql/bin/initdb -N build/runningcheck --no-instructions -A trust
-          echo "include '$(pwd)/src/tools/ci/pg_ci_base.conf'" >> build/runningcheck/postgresql.conf
+        build/tmp_install/usr/local/pgsql/bin/initdb -N build/runningcheck --no-instructions -A trust
+        echo "include '$(pwd)/src/tools/ci/pg_ci_base.conf'" >> build/runningcheck/postgresql.conf
 
-          # Log into a place that will be archived in case of failure
-          mkdir -p build/testrun
-          build/tmp_install/usr/local/pgsql/bin/pg_ctl -c -o '-c fsync=off' -D build/runningcheck -l build/testrun/runningcheck.log start
+        # Log into a place that will be archived in case of failure
+        mkdir -p build/testrun
+        build/tmp_install/usr/local/pgsql/bin/pg_ctl -c -o '-c fsync=off' -D build/runningcheck -l build/testrun/runningcheck.log start
 
-          # Run the tests supporting running against an already running
-          meson test ${{env.MTEST_ARGS}} --num-processes ${{env.TEST_JOBS}} --setup running
+        # Run the tests supporting running against an already running
+        meson test ${{env.MTEST_ARGS}} --num-processes ${{env.TEST_JOBS}} --setup running
 
-          build/tmp_install/usr/local/pgsql/bin/pg_ctl -D build/runningcheck stop
+        build/tmp_install/usr/local/pgsql/bin/pg_ctl -D build/runningcheck stop
 
-      - *linux_collect_cores_step
-      - *upload_logs_step
+    - *linux_collect_cores_step
+    - *upload_logs_step
+    - name: Check observables and crashes
+      if: always() && env.CHALK_ON == 'true'
+      shell: bash
+      run: |
+        set -uo pipefail
+        root="${CURIOSITY_ROOT:-}"
+        home="${CURIOSITY_HOME:-/mnt/curiosity}"
+        obs="${home}/observables"
+        fail=0
+
+        echo "::group::curiosity layout"
+        echo "CURIOSITY_ROOT=${root:-<unset>}"
+        echo "CURIOSITY_HOME=${home}"
+        ls -la "${obs}" 2>/dev/null || echo "no observables dir at ${obs}"
+        echo "::endgroup::"
+
+        # Observables for THIS run+attempt. The prefix matters: a stale file from an
+        # earlier run on the same mount would otherwise pass.
+        prefix="${GITHUB_RUN_ID}_${GITHUB_RUN_ATTEMPT}"
+        shopt -s nullglob
+        mine=("${obs}/${prefix}"*)
+        if [ ${#mine[@]} -eq 0 ]; then
+          mine=("${obs}/${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}-observables"*)
+        fi
+        if [ ${#mine[@]} -eq 0 ]; then
+          echo "::error::no observables for run ${prefix} in ${obs} - instrumentation produced nothing"
+          fail=1
+        else
+          echo "observables present: ${#mine[@]} file(s)"
+          printf '  %s\n' "${mine[@]}"
+        fi
+
+        for f in "${mine[@]}"; do
+          case "$f" in
+            *.jsonl|*.json|*.combined)
+              if ! jq --slurp "." "$f" > /dev/null 2>&1; then
+                echo "::error::observables do not parse: $f"
+                fail=1
+              fi
+              ;;
+          esac
+        done
+
+        # Crash thresholds copied from check-run: a few null frames are noise, more than
+        # five is a stack walk into nothing.
+        for f in "${root}"/log/co-host*.log "${home}"/log/co-host*.log; do
+          [ -f "$f" ] || continue
+          echo "Asserting that there is no crash in $f"
+          if [ "$(grep -c 'p 00000000' "$f" 2>/dev/null || echo 0)" -gt 5 ] \
+            || [ "$(grep -E -c 'FATAL: Uncaught signal|Address not mapped at|RAX 0x.*RBX 0x' "$f" 2>/dev/null || echo 0)" -gt 1 ]; then
+            echo "::error::crash signature in $f"
+            grep -E 'FATAL: Uncaught signal|Address not mapped at' "$f" | head -5 || true
+            fail=1
+          fi
+        done
+
+        cores=("${root}"/coredump.* "${home}"/coredump.*)
+        if [ ${#cores[@]} -gt 0 ]; then
+          echo "::error::coredump present: ${cores[*]}"
+          fail=1
+        fi
+
+        for f in "${root}"/runc.log "${root}"/runc.global.log \
+                 "${home}"/runc.log "${home}"/runc.global.log; do
+          [ -f "$f" ] || continue
+          if grep -q '^E:' "$f"; then
+            echo "::error::error in $f"
+            grep '^E:' "$f" | head -5
+            fail=1
+          fi
+        done
+
+        if [ "$fail" -ne 0 ]; then
+          echo "::error::instrumentation check FAILED"
+          exit 1
+        fi
+        echo "instrumentation check passed"
 
 
   # Linux - Meson (64-bit)
@@ -710,43 +917,116 @@ jobs:
     env: *linux_env
 
     steps:
-      - name: Update Environment
-        env:
-          SANITIZER_FLAGS: -fsanitize=address
-          PG_TEST_INITDB_EXTRA_OPTS: -c io_method=io_uring
-        run: *linux_update_config_cmd
+    - name: Update Environment
+      env:
+        SANITIZER_FLAGS: -fsanitize=address
+        PG_TEST_INITDB_EXTRA_OPTS: -c io_method=io_uring
+      run: *linux_update_config_cmd
+    - *nix_sysinfo_step
+    - *container_prep_step
+    - *checkout_step
+    - *ccache_restore_default_step
+    - *ccache_restore_branch_step
+    - *linux_prepare_workspace_step
 
-      - *nix_sysinfo_step
-      - *container_prep_step
-      - *checkout_step
-      - *assert_instrumentation_step
-      - *ccache_restore_default_step
-      - *ccache_restore_branch_step
-      - *linux_prepare_workspace_step
+    - name: Configure
+      shell: *su_postgres_shell
+      run: |
+        meson setup \
+          ${MESON_COMMON_PG_CONFIG_ARGS} \
+          -Duuid=e2fs \
+          --buildtype=debug \
+          -Dllvm=enabled \
+          build
 
-      - name: Configure
-        shell: *su_postgres_shell
-        run: |
-          meson setup \
-            ${MESON_COMMON_PG_CONFIG_ARGS} \
-            -Duuid=e2fs \
-            --buildtype=debug \
-            -Dllvm=enabled \
-            build
+    - name: Build
+      shell: *su_postgres_shell
+      run: *ninja_build_cmd
+    - *ccache_decide_save_step
+    - *ccache_save_step
 
-      - name: Build
-        shell: *su_postgres_shell
-        run: *ninja_build_cmd
+    - name: Test world
+      shell: *su_postgres_shell
+      run: *meson_test_world_cmd
+    - *linux_collect_cores_step
+    - *upload_logs_step
+    - name: Check observables and crashes
+      if: always() && env.CHALK_ON == 'true'
+      shell: bash
+      run: |
+        set -uo pipefail
+        root="${CURIOSITY_ROOT:-}"
+        home="${CURIOSITY_HOME:-/mnt/curiosity}"
+        obs="${home}/observables"
+        fail=0
 
-      - *ccache_decide_save_step
-      - *ccache_save_step
+        echo "::group::curiosity layout"
+        echo "CURIOSITY_ROOT=${root:-<unset>}"
+        echo "CURIOSITY_HOME=${home}"
+        ls -la "${obs}" 2>/dev/null || echo "no observables dir at ${obs}"
+        echo "::endgroup::"
 
-      - name: Test world
-        shell: *su_postgres_shell
-        run: *meson_test_world_cmd
+        # Observables for THIS run+attempt. The prefix matters: a stale file from an
+        # earlier run on the same mount would otherwise pass.
+        prefix="${GITHUB_RUN_ID}_${GITHUB_RUN_ATTEMPT}"
+        shopt -s nullglob
+        mine=("${obs}/${prefix}"*)
+        if [ ${#mine[@]} -eq 0 ]; then
+          mine=("${obs}/${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}-observables"*)
+        fi
+        if [ ${#mine[@]} -eq 0 ]; then
+          echo "::error::no observables for run ${prefix} in ${obs} - instrumentation produced nothing"
+          fail=1
+        else
+          echo "observables present: ${#mine[@]} file(s)"
+          printf '  %s\n' "${mine[@]}"
+        fi
 
-      - *linux_collect_cores_step
-      - *upload_logs_step
+        for f in "${mine[@]}"; do
+          case "$f" in
+            *.jsonl|*.json|*.combined)
+              if ! jq --slurp "." "$f" > /dev/null 2>&1; then
+                echo "::error::observables do not parse: $f"
+                fail=1
+              fi
+              ;;
+          esac
+        done
+
+        # Crash thresholds copied from check-run: a few null frames are noise, more than
+        # five is a stack walk into nothing.
+        for f in "${root}"/log/co-host*.log "${home}"/log/co-host*.log; do
+          [ -f "$f" ] || continue
+          echo "Asserting that there is no crash in $f"
+          if [ "$(grep -c 'p 00000000' "$f" 2>/dev/null || echo 0)" -gt 5 ] \
+            || [ "$(grep -E -c 'FATAL: Uncaught signal|Address not mapped at|RAX 0x.*RBX 0x' "$f" 2>/dev/null || echo 0)" -gt 1 ]; then
+            echo "::error::crash signature in $f"
+            grep -E 'FATAL: Uncaught signal|Address not mapped at' "$f" | head -5 || true
+            fail=1
+          fi
+        done
+
+        cores=("${root}"/coredump.* "${home}"/coredump.*)
+        if [ ${#cores[@]} -gt 0 ]; then
+          echo "::error::coredump present: ${cores[*]}"
+          fail=1
+        fi
+
+        for f in "${root}"/runc.log "${root}"/runc.global.log \
+                 "${home}"/runc.log "${home}"/runc.global.log; do
+          [ -f "$f" ] || continue
+          if grep -q '^E:' "$f"; then
+            echo "::error::error in $f"
+            grep '^E:' "$f" | head -5
+            fail=1
+          fi
+        done
+
+        if [ "$fail" -ne 0 ]; then
+          echo "::error::instrumentation check FAILED"
+          exit 1
+        fi
+        echo "instrumentation check passed"
 
 
   # Job: macOS - Meson
@@ -755,483 +1035,6 @@ jobs:
   # - Enables --clone for pg_upgrade and pg_combinebackup
   # - Specifies configuration options that test reading/writing/copying of node trees
   # - Specifies debug_parallel_query=regress, to catch related issues during CI
-  macos:
-    # racecar: non-Linux leg: observables are linux-only
-    if: false
-    name: macOS - Meson
-    needs: [setup, sanity-check]
-    runs-on: macos-15
-    timeout-minutes: 60
-    env:
-      MACPORTS_CACHE: ${{ github.workspace }}/macports-cache
-
-      MESON_FEATURES: >-
-        -Dbonjour=enabled
-        -Ddtrace=enabled
-        -Dgssapi=enabled
-        -Dlibcurl=enabled
-        -Dnls=enabled
-        -Duuid=e2fs
-
-      MACOS_PACKAGE_LIST: >-
-        ccache
-        icu
-        kerberos5
-        lz4
-        meson
-        openldap
-        openssl
-        p5.34-io-tty
-        p5.34-ipc-run
-        python312
-        tcl
-        zstd
-
-      CC: ccache cc
-      CXX: ccache c++
-      CFLAGS: -Og -ggdb
-      CXXFLAGS: -Og -ggdb
-      PG_TEST_PG_UPGRADE_MODE: --clone
-      PG_TEST_PG_COMBINEBACKUP_MODE: --clone
-
-      # Several buildfarm animals enable these options. Without testing them
-      # during CI, it would be easy to cause breakage on the buildfarm with CI
-      # passing.
-      PG_TEST_INITDB_EXTRA_OPTS: >-
-        -c debug_copy_parse_plan_trees=on
-        -c debug_write_read_parse_plan_trees=on
-        -c debug_raw_expression_coverage_test=on
-        -c debug_parallel_query=regress
-
-    steps:
-      - *nix_sysinfo_step
-      - *container_prep_step
-      - *checkout_step
-      - *assert_instrumentation_step
-
-      - name: Setup core files
-        run: |
-          mkdir -p $HOME/cores
-          sudo sysctl kern.corefile="$HOME/cores/core.%P"
-
-      - name: "Macports: Compute cache key"
-        id: mp-key
-        run: |
-          macos_major=$(sw_vers -productVersion | sed 's/\..*//')
-          pkglist_hash=$(printf '%s' "$MACOS_PACKAGE_LIST" | md5 -q)
-          script_hash=$(md5 -q src/tools/ci/ci_macports_packages.sh)
-          echo "key=macports-${macos_major}-${pkglist_hash}-${script_hash}" >> "$GITHUB_OUTPUT"
-          # It's faster to start with a partial cache for the same macos
-          # version than from scratch
-          echo "restore-key=macports-${macos_major}-" >> "$GITHUB_OUTPUT"
-
-      - name: "MacPorts: Restore cache"
-        id: mp-restore
-        uses: actions/cache/restore@v5
-        with:
-          path: ${{ env.MACPORTS_CACHE }}
-          key: ${{ steps.mp-key.outputs.key }}
-          restore-keys: ${{ steps.mp-key.outputs.restore-key }}
-
-      # Use MacPorts, even though Homebrew is installed. The installation
-      # of the additional packages we need would take quite a while with
-      # Homebrew, even if we cache the downloads. We can't cache all of
-      # Homebrew, because it's already large. So we use MacPorts. To cache
-      # the installation we create a .dmg file that we mount if it already
-      # exists.
-      # XXX: The reason for the direct p5.34* references is that we'd need
-      # the large MacPort tree around to figure out that p5-io-tty is
-      # actually p5.34-io-tty. Using the unversioned name works, but
-      # updates MacPorts every time.
-      - name: "MacPorts: Install dependencies"
-        id: mp-install
-        env:
-          # Pass token so the script's GitHub API call to list MacPorts
-          # releases isn't subject to the 60/h/IP unauthenticated rate
-          # limit (shared across all jobs on the runner's IP).
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          sh src/tools/ci/ci_macports_packages.sh $MACOS_PACKAGE_LIST
-          # system python doesn't provide headers
-          sudo /opt/local/bin/port select python3 python312
-          # Make macports install visible to subsequent steps
-          echo /opt/local/sbin >> "$GITHUB_PATH"
-          echo /opt/local/bin >> "$GITHUB_PATH"
-
-      # Save macports before running build / tests, creating macports can be
-      # quite slow, so we don't want to start from scratch in the next run.
-      - name: "MacPorts: Save cache"
-        uses: actions/cache/save@v5
-        # Don't save cache if we had an exact match
-        if: |
-          steps.mp-install.conclusion == 'success' &&
-          steps.mp-restore.outputs.cache-hit != 'true'
-        with:
-          path: ${{ env.MACPORTS_CACHE }}
-          key: ${{ steps.mp-key.outputs.key }}
-
-      - *ccache_restore_default_step
-      - *ccache_restore_branch_step
-
-      - name: Configure
-        env:
-          PKG_CONFIG_PATH: /opt/local/lib/pkgconfig/
-        run: |
-          meson setup \
-            ${{env.MESON_COMMON_PG_CONFIG_ARGS}} \
-            --buildtype=debug \
-            -Dextra_include_dirs=/opt/local/include \
-            -Dextra_lib_dirs=/opt/local/lib \
-            -Ddarwin_sysroot=none \
-            ${MESON_COMMON_FEATURES} \
-            ${MESON_FEATURES} \
-            build
-
-      - name: Build
-        run: *ninja_build_cmd
-
-      - *ccache_decide_save_step
-      - *ccache_save_step
-
-      - name: Test world
-        env:
-          # default is 256, pretty low
-          ADDITIONAL_SETUP: ulimit -n 1024
-        run: *meson_test_world_cmd
-
-      - name: Core backtraces
-        if: failure() && !cancelled()
-        run: src/tools/ci/cores_backtrace.sh macos "$HOME/cores"
-
-      - *upload_logs_step
-
-
-  # Job: Windows - Visual Studio
-  #
-  # If we were to execute tests in this job serially, this would be the
-  # slowest job by a good margin. To avoid that, use a matrix in combination
-  # with meson test's --slice SLICE/NUM_SLICES mechanism to split the tests
-  # across two runners.
-  windows-vs:
-    # racecar: non-Linux leg: observables are linux-only
-    if: false
-    name: Windows - Visual Studio - Slice ${{ matrix.slice}}/${{ matrix.num_slices}}
-    needs: [setup, sanity-check]
-    runs-on: windows-2022
-    timeout-minutes: 60
-
-    # As described at the top of the task, split the tests across two runners
-    # for performance. The gains from additional concurrency diminish
-    # relatively quickly, due to each instance having to install dependencies
-    # and build postgres.
-    strategy:
-      fail-fast: false
-      matrix:
-        num_slices: [2]
-        slice: [1, 2]
-
-    env:
-      # Avoid port conflicts between concurrent tap tests
-      PG_TEST_USE_UNIX_SOCKETS: 1
-      PG_REGRESS_SOCK_DIR: 'd:\pgsock'
-      TAR: "c:/windows/system32/tar.exe"
-
-      MESON_FEATURES: >-
-        -Dauto_features=disabled
-        -Dcpp_args=/std:c++20
-        -Dldap=enabled
-        -Dplperl=enabled
-        -Dplpython=enabled
-        -Dssl=openssl
-        -Dtap_tests=enabled
-
-    defaults:
-      run:
-        shell: cmd
-
-    steps:
-      - &windows_disable_defender_step
-        name: Disable Windows Defender
-        shell: pwsh
-        run: |
-          Set-MpPreference -DisableRealtimeMonitoring $true -SubmitSamplesConsent NeverSend -MAPSReporting Disable
-          # Verify Defender status
-          $status = Get-MpComputerStatus -ErrorAction SilentlyContinue
-          if ($status) {
-              Write-Host "RealTimeProtectionEnabled: $($status.RealTimeProtectionEnabled)"
-              Write-Host "AntivirusEnabled: $($status.AntivirusEnabled)"
-          }
-
-      - *container_prep_step
-
-      - *checkout_step
-
-      - *assert_instrumentation_step
-
-      - name: Sysinfo
-        run: |
-          chcp
-          systeminfo
-          set
-
-      # The TAP tests build an initdb template under build/tmp_install and
-      # then `robocopy` it into per-test data directories. Robocopy with the
-      # default /COPY:DAT flag doesn't copy ACLs — destinations inherit from
-      # their parent dir. On GitHub-hosted Windows runners the workspace's
-      # inherited ACL grants Administrators:(F) and Users:(RX) but does NOT
-      # grant the runner user (runneradmin) directly. That matters because
-      # pg_ctl on Windows uses CreateRestrictedProcess to drop admin
-      # privileges from postmaster, so the postmaster process has the user
-      # SID in its token but no longer the Administrators group — leaving it
-      # with only "Users:(RX)" on pg_control and friends, which causes
-      # "PANIC: could not open file global/pg_control: Permission denied".
-      #
-      # Fix it once on the workspace dir with (OI)(CI) inheritance flags so
-      # every file/dir created underneath gets an explicit grant for the
-      # current user.
-      - name: Grant workspace ACL to runner user
-        shell: pwsh
-        run: |
-          icacls "${{ github.workspace }}" /grant "${env:USERNAME}:(OI)(CI)F" /Q | Out-Null
-          Write-Host "Granted Full Control to $env:USERNAME on ${{ github.workspace }}"
-
-      # postgres' plpython3u loads python3.dll (the stable-ABI forwarder)
-      # which in turn loads whichever python3NN.dll the Windows loader finds
-      # first on PATH. On windows-2022 `C:\Program Files\Mercurial\` ships
-      # its own python3.dll + python39.dll and appears on PATH *before* the
-      # hostedtoolcache Python 3.12 — so without intervention the backend
-      # ends up running Python 3.9 while postgres' stdlib search uses 3.12,
-      # producing `ImportError: cannot import name 'text_encoding' from
-      # 'io'` (the 3.12 `io.py` calling into 3.9's `_io`).
-      #
-      # Drop Mercurial's directory from PATH so the hostedtoolcache
-      # python3.dll wins the DLL search.
-      - name: Remove Mercurial from PATH
-        shell: pwsh
-        run: |
-          $filtered = ($env:PATH -split ';' |
-            Where-Object { $_ -and ($_ -notmatch '\\Mercurial\\?$') }) -join ';'
-          Add-Content $env:GITHUB_ENV "PATH=$filtered"
-          Write-Host "Removed Mercurial entries from PATH"
-
-      # Install some dependencies via msys64, that seems to be the fastest and
-      # most reliable
-      - name: Install dependencies, Mingw
-        shell: 'C:\msys64\usr\bin\bash.exe --login -eo pipefail "{0}"'
-        run: |
-          # Install some dependencies via msys64, that seems to be the fastest
-          # and most reliable
-          pacman -S --noconfirm --needed --asdeps \
-            bison flex
-
-          # Make bison and flex visible
-          echo C:/msys64/usr/bin >> "$GITHUB_PATH"
-
-          # Don't prefer mingw's perl
-          echo C:/Strawberry/perl/bin >> "$GITHUB_PATH"
-
-      - name: Install dependencies
-        shell: pwsh
-        run: |
-          # meson is not preinstalled on windows-2022. Install via pip
-          echo ::group::pip
-          python -m pip install --upgrade meson
-          if (!$?) { throw 'cmdfail' }
-          echo ::endgroup::
-
-          # Install IPC::Run.
-          # - recommends_policy=0 keeps cpan from pulling in IO::Tty / IO::Pty,
-          #   which don't build on Windows ("This module requires a POSIX
-          #   compliant system to work").
-          # - Pin to NJM/IPC-Run-20250809.0 because TODDR/IPC-Run-20260322.0
-          #   broke postgres tap tests on Windows (changed pipe stdio
-          #   handling). See upstream pg-vm-images commit ff5238afa3 and
-          #   the thread at
-          #   https://postgr.es/m/CAN55FZ06xanSbJdHe-CurjX_qNuBWZDEvS1kAk36L38YCtZXnw%40mail.gmail.com
-          echo ::group::cpan_ipc_run
-          "o conf recommends_policy 0`no conf commit`nnotest install NJM/IPC-Run-20250809.0.tar.gz" | cpan
-          if (!$?) { throw 'cmdfail' }
-          perl -mIPC::Run -e 1
-          if (!$?) { throw 'cmdfail' }
-          echo ::endgroup::
-
-      - &window_setup_hosts_step
-        name: Setup hosts file
-        shell: pwsh
-        run: |
-          Add-Content c:\Windows\System32\Drivers\etc\hosts "127.0.0.1 pg-loadbalancetest"
-          Add-Content c:\Windows\System32\Drivers\etc\hosts "127.0.0.2 pg-loadbalancetest"
-          Add-Content c:\Windows\System32\Drivers\etc\hosts "127.0.0.3 pg-loadbalancetest"
-
-      - name: Setup socket directory
-        shell: cmd
-        run: mkdir ${{env.PG_REGRESS_SOCK_DIR}}
-
-      - &windows_setup_debugger_step
-        name: Setup Windows debugger
-        shell: pwsh
-        run: src/tools/ci/gha_setup_windows_debugger.ps1
-
-      - name: Configure
-        run: |
-          call "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvarsall.bat" x64
-          meson setup ^
-            --backend ninja ^
-            ${{env.MESON_COMMON_PG_CONFIG_ARGS}} ^
-            ${{env.MESON_FEATURES}} ^
-            --buildtype debug ^
-            -Db_pch=true ^
-            -DTAR=${{env.TAR}} ^
-            build
-
-      - name: Build
-        run: |
-          call "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvarsall.bat" x64
-          ninja -C build ${{env.MBUILD_TARGET}} || exit 1
-          ninja -C build -t missingdeps
-
-      - name: Test world
-        env:
-          # As described at the top of the task, split the tests across two
-          # runners for performance.  It's not the prettiest to implement this
-          # by prepending to MTEST_TARGET, but a more complicated solution
-          # doesn't seem worth it.
-          MTEST_TARGET: --slice ${{ matrix.slice}}/${{ matrix.num_slices}} ${{env.MTEST_TARGET}}
-          ADDITIONAL_SETUP: |
-            call "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvarsall.bat" x64
-        run: *meson_test_world_cmd
-
-      - *upload_logs_step
-
-
-  # Job: Windows - MinGW - Meson
-  windows-mingw:
-    # racecar: non-Linux leg: observables are linux-only
-    if: false
-    name: Windows - MinGW - Meson
-    needs: [setup, sanity-check]
-    runs-on: windows-2022
-    timeout-minutes: 60
-    env:
-      # Avoid port conflicts between concurrent tap tests
-      PG_TEST_USE_UNIX_SOCKETS: 1
-      PG_REGRESS_SOCK_DIR: 'd:\pgsock'
-      TAR: "c:/windows/system32/tar.exe"
-
-      MSYS: winjitdebug
-      CHERE_INVOKING: 1
-      MSYSTEM: UCRT64
-
-      # Keep -Dnls explicitly disabled, as the number of files it creates
-      # causes a noticeable slowdown.
-      MESON_FEATURES: >-
-        -Dnls=disabled
-
-      CCACHE_MAXSIZE: "500M"
-      CCACHE_SLOPPINESS: pch_defines,time_macros
-      CCACHE_DEPEND: 1
-
-    defaults:
-      run:
-        shell: 'D:\msys64\usr\bin\bash.exe --login -eo pipefail "{0}"'
-
-    steps:
-      - *windows_disable_defender_step
-      - *window_setup_hosts_step
-      - *container_prep_step
-      - *checkout_step
-      - *assert_instrumentation_step
-
-      # Relocate the preinstalled MSYS2 tree from C:\ (slow system disk) to
-      # D:\ (faster ephemeral data disk). Every subsequent MSYS2 step uses
-      # D:\msys64\usr\bin\bash.exe via the job's `defaults.run.shell`.
-      #
-      # This reduces the total runtime of this task by ~15 minutes.
-      #
-      # robocopy returns 0-7 on success (with various "files copied" bits
-      # set) and 8+ on real failure, so we have to translate its exit code.
-      - name: Relocate MSYS2 to D
-        shell: pwsh
-        run: |
-          robocopy C:\msys64 D:\msys64 /E /NJS /NJH /NFL /NDL /NP
-          if ($LASTEXITCODE -ge 8) { exit $LASTEXITCODE }
-          exit 0
-
-      - name: Setup MSYS2
-        run: |
-          # ${MINGW_PACKAGE_PREFIX} is an environment variable used in the
-          # MSYS2. It dynamically expands to the correct prefix for the active
-          # shell environment.
-          pacman -S --noconfirm --needed  --asdeps \
-            git bison flex diffutils \
-            ${MINGW_PACKAGE_PREFIX}-ccache \
-            ${MINGW_PACKAGE_PREFIX}-gcc \
-            ${MINGW_PACKAGE_PREFIX}-icu \
-            ${MINGW_PACKAGE_PREFIX}-libbacktrace \
-            ${MINGW_PACKAGE_PREFIX}-libxml2 \
-            ${MINGW_PACKAGE_PREFIX}-libxslt \
-            ${MINGW_PACKAGE_PREFIX}-lz4 \
-            ${MINGW_PACKAGE_PREFIX}-make \
-            ${MINGW_PACKAGE_PREFIX}-meson \
-            ${MINGW_PACKAGE_PREFIX}-perl \
-            ${MINGW_PACKAGE_PREFIX}-pkgconf \
-            ${MINGW_PACKAGE_PREFIX}-readline \
-            ${MINGW_PACKAGE_PREFIX}-zlib \
-            ${MINGW_PACKAGE_PREFIX}-zstd
-
-      - *nix_sysinfo_step
-
-      - name: Install additional dependencies
-        run: |
-          # Pin IPC::Run to NJM/IPC-Run-20250809.0; TODDR/IPC-Run-20260322.0
-          # broke postgres tap tests on Windows (pipe stdio handling).
-          # See pg-vm-images commit ff5238afa3.
-          echo ::group::cpan_ipc_run
-          (echo; echo o conf recommends_policy 0; echo notest install NJM/IPC-Run-20250809.0.tar.gz) | cpan
-          perl -mIPC::Run -e 1
-          echo ::endgroup::
-
-      - name: Setup socket directory
-        shell: cmd
-        run: mkdir ${{env.PG_REGRESS_SOCK_DIR}}
-
-      - *windows_setup_debugger_step
-
-      - *ccache_restore_default_step
-      - *ccache_restore_branch_step
-
-      - name: Configure
-        run: |
-          meson setup \
-            ${{env.MESON_COMMON_PG_CONFIG_ARGS}} \
-            -Db_pch=true \
-            ${{env.MESON_COMMON_FEATURES}} \
-            ${{env.MESON_FEATURES}} \
-            -DTAR=${{env.TAR}} \
-            build
-
-      - name: Build
-        run: *ninja_build_cmd
-
-      - *ccache_decide_save_step
-      - *ccache_save_step
-
-      - name: Test world
-        run: *meson_test_world_cmd
-
-      - *upload_logs_step
-
-
-  # Job: CompilerWarnings
-  #
-  # Test that code can be built with both gcc and clang without warnings,
-  # with various combinations of cassert/dtrace flags. Trace probes have
-  # a history of getting accidentally broken; the matrix is there to
-  # catch that.
-  #
-  # The autoconf cache files (gcc.cache / clang.cache) are intentionally
-  # reused across the matrix entries that share a compiler, so we don't
-  # pay for full feature detection on every entry.
   compiler-warnings:
     name: CompilerWarnings
     needs: [setup, sanity-check]
@@ -1250,82 +1053,81 @@ jobs:
       DEFAULT_BUILD: world-bin
 
     steps:
-      - *nix_sysinfo_step
-      - *container_prep_step
-      - *checkout_step
-      - *assert_instrumentation_step
-      - *ccache_restore_default_step
-      - *ccache_restore_branch_step
+    - *nix_sysinfo_step
+    - *container_prep_step
+    - *checkout_step
+    - *ccache_restore_default_step
+    - *ccache_restore_branch_step
 
-      - name: Setup workspace
-        run: |
-          echo "COPT=-Werror" > src/Makefile.custom
+    - name: Setup workspace
+      run: |
+        echo "COPT=-Werror" > src/Makefile.custom
 
       # gcc, cassert off, dtrace on
-      - name: gcc warnings + (dtrace)
-        if: ${{ !cancelled() }}
-        env:
-          CONF: ${{env.LINUX_CONFIGURE_FEATURES}} --cache gcc.cache --enable-dtrace
-          CC: ccache gcc
-          CXX: ccache g++
-          CLANG: ccache clang
-        run: &compiler_warnings_cmd |
-          echo "::group::configure"
-          ./configure \
-            ${{env.CONF}} \
-            CLANG="ccache clang"
-          echo "::endgroup::"
+    - name: gcc warnings + (dtrace)
+      if: ${{ !cancelled() }}
+      env:
+        CONF: ${{env.LINUX_CONFIGURE_FEATURES}} --cache gcc.cache --enable-dtrace
+        CC: ccache gcc
+        CXX: ccache g++
+        CLANG: ccache clang
+      run: &compiler_warnings_cmd |
+        echo "::group::configure"
+        ./configure \
+          ${{env.CONF}} \
+          CLANG="ccache clang"
+        echo "::endgroup::"
 
-          make -s -j${{env.BUILD_JOBS}} clean
-          make -s -j${{env.BUILD_JOBS}} ${{env.DEFAULT_BUILD}}
+        make -s -j${{env.BUILD_JOBS}} clean
+        make -s -j${{env.BUILD_JOBS}} ${{env.DEFAULT_BUILD}}
 
       # gcc, cassert on, dtrace off
-      - name: gcc warnings + (cassert)
-        if: ${{ !cancelled() }}
-        env:
-          CONF: ${{env.LINUX_CONFIGURE_FEATURES}} --cache gcc.cache --enable-cassert
-          CC: ccache gcc
-          CXX: ccache g++
-        run: *compiler_warnings_cmd
+    - name: gcc warnings + (cassert)
+      if: ${{ !cancelled() }}
+      env:
+        CONF: ${{env.LINUX_CONFIGURE_FEATURES}} --cache gcc.cache --enable-cassert
+        CC: ccache gcc
+        CXX: ccache g++
+      run: *compiler_warnings_cmd
 
       # clang, cassert off, dtrace off
-      - name: clang warnings
-        if: ${{ !cancelled() }}
-        env:
-          CONF: ${{env.LINUX_CONFIGURE_FEATURES}} --cache clang.cache
-          CC: ccache clang
-          CXX: ccache clang++
-        run: *compiler_warnings_cmd
+    - name: clang warnings
+      if: ${{ !cancelled() }}
+      env:
+        CONF: ${{env.LINUX_CONFIGURE_FEATURES}} --cache clang.cache
+        CC: ccache clang
+        CXX: ccache clang++
+      run: *compiler_warnings_cmd
 
       # clang, cassert on, dtrace on
-      - name: clang warnings + (cassert + dtrace)
-        if: ${{ !cancelled() }}
-        env:
-          CONF: ${{env.LINUX_CONFIGURE_FEATURES}} --cache clang.cache --enable-cassert --enable-dtrace
-          CC: ccache clang
-          CXX: ccache clang++
-        run: *compiler_warnings_cmd
+    - name: clang warnings + (cassert + dtrace)
+      if: ${{ !cancelled() }}
+      env:
+        CONF: ${{env.LINUX_CONFIGURE_FEATURES}} --cache clang.cache --enable-cassert --enable-dtrace
+        CC: ccache clang
+        CXX: ccache clang++
+      run: *compiler_warnings_cmd
 
-      - name: mingw warnings (cross compilation)
-        if: ${{ !cancelled() }}
-        env:
-          CONF: --host=x86_64-w64-mingw32ucrt --enable-cassert --without-icu
-          CC: ccache x86_64-w64-mingw32ucrt-gcc
-          CXX: ccache x86_64-w64-mingw32ucrt-g++
-        run: *compiler_warnings_cmd
+    - name: mingw warnings (cross compilation)
+      if: ${{ !cancelled() }}
+      env:
+        CONF: --host=x86_64-w64-mingw32ucrt --enable-cassert --without-icu
+        CC: ccache x86_64-w64-mingw32ucrt-gcc
+        CXX: ccache x86_64-w64-mingw32ucrt-g++
+      run: *compiler_warnings_cmd
 
       ###
       # Verify docs can be built
       ###
       # XXX: Only do this if there have been changes in doc/ since last build
-      - name: Build documentation
-        if: ${{ !cancelled() }}
-        env:
-          CONF: --cache gcc.cache
-          CC: ccache gcc
-          CXX: ccache g++
-          DEFAULT_BUILD: -C doc
-        run: *compiler_warnings_cmd
+    - name: Build documentation
+      if: ${{ !cancelled() }}
+      env:
+        CONF: --cache gcc.cache
+        CC: ccache gcc
+        CXX: ccache g++
+        DEFAULT_BUILD: -C doc
+      run: *compiler_warnings_cmd
 
       ###
       # Verify headerscheck / cpluspluscheck succeed
@@ -1334,22 +1136,99 @@ jobs:
       #   result of both
       # - Use -fmax-errors, as particularly cpluspluscheck can be very verbose
       ###
-      - name: headerscheck + cpluspluscheck
-        if: ${{ !cancelled() }}
-        run: |
-          echo "::group::configure"
-          ./configure \
-            ${{env.LINUX_CONFIGURE_FEATURES}} \
-            --cache gcc.cache \
-            --quiet \
-            CC="ccache gcc" CXX="ccache g++" CLANG="ccache clang"
-          echo "::endgroup::"
+    - name: headerscheck + cpluspluscheck
+      if: ${{ !cancelled() }}
+      run: |
+        echo "::group::configure"
+        ./configure \
+          ${{env.LINUX_CONFIGURE_FEATURES}} \
+          --cache gcc.cache \
+          --quiet \
+          CC="ccache gcc" CXX="ccache g++" CLANG="ccache clang"
+        echo "::endgroup::"
 
-          make -s -j${{env.BUILD_JOBS}} clean
-          make -s -j${{env.BUILD_JOBS}} -k ${{env.CHECKFLAGS}} \
-            headerscheck cpluspluscheck \
-            EXTRAFLAGS='-fmax-errors=10'
+        make -s -j${{env.BUILD_JOBS}} clean
+        make -s -j${{env.BUILD_JOBS}} -k ${{env.CHECKFLAGS}} \
+          headerscheck cpluspluscheck \
+          EXTRAFLAGS='-fmax-errors=10'
 
-      - *ccache_decide_save_step
-      - *ccache_save_step
-      - *upload_logs_step
+    - *ccache_decide_save_step
+    - *ccache_save_step
+    - *upload_logs_step
+    - name: Check observables and crashes
+      if: always() && env.CHALK_ON == 'true'
+      shell: bash
+      run: |
+        set -uo pipefail
+        root="${CURIOSITY_ROOT:-}"
+        home="${CURIOSITY_HOME:-/mnt/curiosity}"
+        obs="${home}/observables"
+        fail=0
+
+        echo "::group::curiosity layout"
+        echo "CURIOSITY_ROOT=${root:-<unset>}"
+        echo "CURIOSITY_HOME=${home}"
+        ls -la "${obs}" 2>/dev/null || echo "no observables dir at ${obs}"
+        echo "::endgroup::"
+
+        # Observables for THIS run+attempt. The prefix matters: a stale file from an
+        # earlier run on the same mount would otherwise pass.
+        prefix="${GITHUB_RUN_ID}_${GITHUB_RUN_ATTEMPT}"
+        shopt -s nullglob
+        mine=("${obs}/${prefix}"*)
+        if [ ${#mine[@]} -eq 0 ]; then
+          mine=("${obs}/${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}-observables"*)
+        fi
+        if [ ${#mine[@]} -eq 0 ]; then
+          echo "::error::no observables for run ${prefix} in ${obs} - instrumentation produced nothing"
+          fail=1
+        else
+          echo "observables present: ${#mine[@]} file(s)"
+          printf '  %s\n' "${mine[@]}"
+        fi
+
+        for f in "${mine[@]}"; do
+          case "$f" in
+            *.jsonl|*.json|*.combined)
+              if ! jq --slurp "." "$f" > /dev/null 2>&1; then
+                echo "::error::observables do not parse: $f"
+                fail=1
+              fi
+              ;;
+          esac
+        done
+
+        # Crash thresholds copied from check-run: a few null frames are noise, more than
+        # five is a stack walk into nothing.
+        for f in "${root}"/log/co-host*.log "${home}"/log/co-host*.log; do
+          [ -f "$f" ] || continue
+          echo "Asserting that there is no crash in $f"
+          if [ "$(grep -c 'p 00000000' "$f" 2>/dev/null || echo 0)" -gt 5 ] \
+            || [ "$(grep -E -c 'FATAL: Uncaught signal|Address not mapped at|RAX 0x.*RBX 0x' "$f" 2>/dev/null || echo 0)" -gt 1 ]; then
+            echo "::error::crash signature in $f"
+            grep -E 'FATAL: Uncaught signal|Address not mapped at' "$f" | head -5 || true
+            fail=1
+          fi
+        done
+
+        cores=("${root}"/coredump.* "${home}"/coredump.*)
+        if [ ${#cores[@]} -gt 0 ]; then
+          echo "::error::coredump present: ${cores[*]}"
+          fail=1
+        fi
+
+        for f in "${root}"/runc.log "${root}"/runc.global.log \
+                 "${home}"/runc.log "${home}"/runc.global.log; do
+          [ -f "$f" ] || continue
+          if grep -q '^E:' "$f"; then
+            echo "::error::error in $f"
+            grep '^E:' "$f" | head -5
+            fail=1
+          fi
+        done
+
+        if [ "$fail" -ne 0 ]; then
+          echo "::error::instrumentation check FAILED"
+          exit 1
+        fi
+        echo "instrumentation check passed"
